@@ -155,7 +155,19 @@ Gold 값 규칙:
 
 ## 5.2 StageLayoutPointTable
 
-스테이지 안의 주요 배치 지점과 손님 주문 위치를 정의한다. MVP는 고정 좌표로 시작해도 되지만, 손님 +1 이후 카운터 앞/좌우/뒤쪽 fallback 배치를 위해 데이터 구조를 둔다.
+스테이지 안의 주요 배치 지점, 손님 주문 위치, 작업자 서비스 위치, 장애물 위치를 정의한다. MVP는 고정 좌표로 시작해도 되지만, 손님 +1 이후 카운터 앞/좌우/뒤쪽 fallback 배치와 작업자 경로 계산을 위해 데이터 구조를 둔다.
+
+배치 기준:
+
+- 폰 세로 11x20 고정 맵에서 y=0은 상단 입구 방향이다.
+- y=1~10은 손님 공간이다. 손님 이동, 대기, 식탁, 옷걸이, 진열대 같은 확장 오브젝트를 배치한다.
+- y=11은 카운터 앞 손님 주문 위치, y=12는 카운터, y=13은 작업자 서비스 지점이다.
+- y=14~19는 주인공/직원의 작업 공간이다.
+- `ProductStand`, `ProductionSlot`, `Counter`, `ReservedObstacle`은 작업자 경로에서 통과 불가로 처리한다.
+- 미오픈 생산 슬롯도 미래 배치가 예약된 칸이면 `ProductionSlot` 또는 `ReservedObstacle`로 등록해 작업자가 지나가지 않게 한다.
+- 주인공과 직원은 카운터 아래 `WorkerService` 주변에서 시작/대기한다.
+- 생산 슬롯은 동시에 1명의 주인공 또는 직원만 점유할 수 있다.
+- 생산 슬롯 주변 상하좌우 빈 칸 중 작업자 현재 위치에서 최단 경로인 칸을 생산 작업 위치로 사용한다. 동률이면 카운터/손님 쪽에 가까운 칸을 우선한다.
 
 | Field | Type | Required | Example | Description |
 |---|---|---|---|---|
@@ -179,8 +191,11 @@ Gold 값 규칙:
 | CustomerOrderSide | 카운터 좌우 확장 주문 위치 |
 | CustomerOrderBack | 카운터 뒤쪽 fallback 주문 위치 |
 | Counter | 카운터 타일 |
+| WorkerService | 작업자가 주문 접수/상품 전달을 수행하는 카운터 아래쪽 지점 |
+| WorkerPath | 작업자 이동 통로 힌트 |
 | ProductStand | 상품 매대 위치 |
 | ProductionSlot | 생산 슬롯 위치 |
+| ReservedObstacle | 아직 열리지 않았지만 미래 오브젝트가 예약된 통과 불가 칸 |
 | MainCharacterStart | 메인 캐릭터 시작 위치 |
 | StaffWaiting | 직원 대기 위치 |
 | DecorationArea | 장식/여백 영역 기준점 |
@@ -209,6 +224,7 @@ Gold 값 규칙:
 | stageId | string | Yes | amusement_001 | 소속 스테이지 |
 | standOrder | int | Yes | 1 | 스테이지 내 매대 순서 |
 | isStartingStand | bool | Yes | true | 스테이지 시작 매대 여부 |
+| unlockGateRule | enum | Yes | FirstOrderReceived | 해금 가능 상태가 되는 조건 |
 | unlockCost | double | Yes | 5 | 해금 비용 |
 | basePrice | double | Yes | 2 | 레벨 1 판매가 |
 | baseProductionAmount | int | Yes | 1 | 1회 생산 시 기본 생산 수량 |
@@ -223,6 +239,14 @@ Gold 값 규칙:
 | costGrowth | float | No | 1.12 | levelCurveId가 없을 때 사용하는 비용 증가율 fallback |
 | standPrefabKey | string | No | stand_cotton_candy | 매대 프리팹 참조 키 |
 | iconKey | string | No | icon_cotton_candy | UI 아이콘 키 |
+
+### ProductUnlockGateRule Enum
+
+| Value | Description |
+|---|---|
+| FirstOrderReceived | 첫 손님 주문을 받은 뒤 해금 가능. 주문 전에는 매대가 잠금 상태로 보이더라도 해금 표시와 구매 입력이 비활성 |
+| FirstStandUnlocked | 같은 스테이지의 1번 매대가 해금된 뒤 해금 가능. Gold가 충분해도 1번 매대 해금 전에는 구매 입력이 비활성 |
+| GoldOnly | 별도 주문 게이트 없이 Gold가 충분하면 해금 가능 |
 
 MVP 상품 생산 시간 규칙:
 
@@ -1121,88 +1145,91 @@ MVP에서 캐릭터 구매와 장비를 구현하지 않는 경우 기본 캐릭
 | amusement_001_path_01 | amusement_001 | CustomerPath |  | 5 | 1 | 1 | 1 |
 | amusement_001_path_02 | amusement_001 | CustomerPath |  | 5 | 2 | 2 | 1 |
 | amusement_001_path_03 | amusement_001 | CustomerPath |  | 5 | 3 | 3 | 1 |
-| amusement_001_order_01 | amusement_001 | CustomerOrder |  | 5 | 4 | 1 | 1 |
-| amusement_001_order_side_l | amusement_001 | CustomerOrderSide |  | 4 | 4 | 2 | 1 |
-| amusement_001_order_side_r | amusement_001 | CustomerOrderSide |  | 6 | 4 | 3 | 1 |
-| amusement_001_order_back_01 | amusement_001 | CustomerOrderBack |  | 5 | 3 | 4 | 1 |
-| amusement_001_order_back_l | amusement_001 | CustomerOrderBack |  | 4 | 3 | 5 | 1 |
-| amusement_001_order_back_r | amusement_001 | CustomerOrderBack |  | 6 | 3 | 6 | 1 |
-| amusement_001_counter_l | amusement_001 | Counter |  | 4 | 5 | 1 | 1 |
-| amusement_001_counter_c | amusement_001 | Counter |  | 5 | 5 | 2 | 1 |
-| amusement_001_counter_r | amusement_001 | Counter |  | 6 | 5 | 3 | 1 |
-| amusement_001_cotton_stand | amusement_001 | ProductStand | cotton_candy | 4 | 6 | 1 | 1 |
-| amusement_001_cotton_slot_01 | amusement_001 | ProductionSlot | cotton_candy | 5 | 6 | 1 | 1 |
-| amusement_001_main_start | amusement_001 | MainCharacterStart |  | 6 | 7 | 1 | 1 |
-| amusement_001_staff_wait_01 | amusement_001 | StaffWaiting |  | 5 | 7 | 1 | 1 |
-| amusement_001_decoration_base | amusement_001 | DecorationArea |  | 5 | 13 | 1 | 1 |
+| amusement_001_order_01 | amusement_001 | CustomerOrder |  | 5 | 11 | 1 | 1 |
+| amusement_001_order_side_l | amusement_001 | CustomerOrderSide |  | 4 | 11 | 2 | 1 |
+| amusement_001_order_side_r | amusement_001 | CustomerOrderSide |  | 6 | 11 | 3 | 1 |
+| amusement_001_order_back_01 | amusement_001 | CustomerOrderBack |  | 5 | 10 | 4 | 1 |
+| amusement_001_order_back_l | amusement_001 | CustomerOrderBack |  | 4 | 10 | 5 | 1 |
+| amusement_001_order_back_r | amusement_001 | CustomerOrderBack |  | 6 | 10 | 6 | 1 |
+| amusement_001_counter_l | amusement_001 | Counter |  | 4 | 12 | 1 | 1 |
+| amusement_001_counter_c | amusement_001 | Counter |  | 5 | 12 | 2 | 1 |
+| amusement_001_counter_r | amusement_001 | Counter |  | 6 | 12 | 3 | 1 |
+| amusement_001_worker_service | amusement_001 | WorkerService |  | 5 | 13 | 1 | 1 |
+| amusement_001_cotton_stand | amusement_001 | ProductStand | cotton_candy | 4 | 15 | 1 | 1 |
+| amusement_001_cotton_slot_01 | amusement_001 | ProductionSlot | cotton_candy | 5 | 15 | 1 | 1 |
+| amusement_001_main_start | amusement_001 | MainCharacterStart |  | 5 | 13 | 1 | 1 |
+| amusement_001_staff_wait_01 | amusement_001 | StaffWaiting |  | 4 | 13 | 1 | 1 |
+| amusement_001_decoration_base | amusement_001 | DecorationArea |  | 5 | 5 | 1 | 1 |
 | amusement_002_entrance | amusement_002 | Entrance |  | 5 | 0 | 1 | 1 |
 | amusement_002_exit | amusement_002 | Exit |  | 6 | 0 | 1 | 1 |
 | amusement_002_path_01 | amusement_002 | CustomerPath |  | 5 | 1 | 1 | 1 |
 | amusement_002_path_02 | amusement_002 | CustomerPath |  | 5 | 2 | 2 | 1 |
 | amusement_002_path_03 | amusement_002 | CustomerPath |  | 5 | 3 | 3 | 1 |
-| amusement_002_order_01 | amusement_002 | CustomerOrder |  | 5 | 4 | 1 | 1 |
-| amusement_002_order_02 | amusement_002 | CustomerOrder |  | 4 | 4 | 2 | 1 |
-| amusement_002_order_03 | amusement_002 | CustomerOrder |  | 6 | 4 | 3 | 1 |
-| amusement_002_order_04 | amusement_002 | CustomerOrder |  | 3 | 4 | 4 | 1 |
-| amusement_002_order_05 | amusement_002 | CustomerOrder |  | 7 | 4 | 5 | 1 |
-| amusement_002_order_back_01 | amusement_002 | CustomerOrderBack |  | 5 | 3 | 6 | 1 |
-| amusement_002_order_back_02 | amusement_002 | CustomerOrderBack |  | 4 | 3 | 7 | 1 |
-| amusement_002_order_back_03 | amusement_002 | CustomerOrderBack |  | 6 | 3 | 8 | 1 |
-| amusement_002_order_back_04 | amusement_002 | CustomerOrderBack |  | 3 | 3 | 9 | 1 |
-| amusement_002_order_back_05 | amusement_002 | CustomerOrderBack |  | 7 | 3 | 10 | 1 |
-| amusement_002_counter_01 | amusement_002 | Counter |  | 3 | 5 | 1 | 1 |
-| amusement_002_counter_02 | amusement_002 | Counter |  | 4 | 5 | 2 | 1 |
-| amusement_002_counter_03 | amusement_002 | Counter |  | 5 | 5 | 3 | 1 |
-| amusement_002_counter_04 | amusement_002 | Counter |  | 6 | 5 | 4 | 1 |
-| amusement_002_counter_05 | amusement_002 | Counter |  | 7 | 5 | 5 | 1 |
-| amusement_002_bead_stand | amusement_002 | ProductStand | bead_icecream | 3 | 6 | 1 | 1 |
-| amusement_002_bead_slot_01 | amusement_002 | ProductionSlot | bead_icecream | 4 | 6 | 1 | 1 |
-| amusement_002_chicken_stand | amusement_002 | ProductStand | chicken_skewer | 6 | 6 | 1 | 1 |
-| amusement_002_chicken_slot_01 | amusement_002 | ProductionSlot | chicken_skewer | 7 | 6 | 1 | 1 |
-| amusement_002_chicken_slot_02 | amusement_002 | ProductionSlot | chicken_skewer | 7 | 7 | 2 | 1 |
-| amusement_002_main_start | amusement_002 | MainCharacterStart |  | 5 | 8 | 1 | 1 |
-| amusement_002_staff_wait_01 | amusement_002 | StaffWaiting |  | 4 | 8 | 1 | 1 |
-| amusement_002_staff_wait_02 | amusement_002 | StaffWaiting |  | 6 | 8 | 2 | 1 |
-| amusement_002_decoration_base | amusement_002 | DecorationArea |  | 5 | 13 | 1 | 1 |
+| amusement_002_order_01 | amusement_002 | CustomerOrder |  | 5 | 11 | 1 | 1 |
+| amusement_002_order_02 | amusement_002 | CustomerOrder |  | 4 | 11 | 2 | 1 |
+| amusement_002_order_03 | amusement_002 | CustomerOrder |  | 6 | 11 | 3 | 1 |
+| amusement_002_order_04 | amusement_002 | CustomerOrder |  | 3 | 11 | 4 | 1 |
+| amusement_002_order_05 | amusement_002 | CustomerOrder |  | 7 | 11 | 5 | 1 |
+| amusement_002_order_back_01 | amusement_002 | CustomerOrderBack |  | 5 | 10 | 6 | 1 |
+| amusement_002_order_back_02 | amusement_002 | CustomerOrderBack |  | 4 | 10 | 7 | 1 |
+| amusement_002_order_back_03 | amusement_002 | CustomerOrderBack |  | 6 | 10 | 8 | 1 |
+| amusement_002_order_back_04 | amusement_002 | CustomerOrderBack |  | 3 | 10 | 9 | 1 |
+| amusement_002_order_back_05 | amusement_002 | CustomerOrderBack |  | 7 | 10 | 10 | 1 |
+| amusement_002_counter_01 | amusement_002 | Counter |  | 3 | 12 | 1 | 1 |
+| amusement_002_counter_02 | amusement_002 | Counter |  | 4 | 12 | 2 | 1 |
+| amusement_002_counter_03 | amusement_002 | Counter |  | 5 | 12 | 3 | 1 |
+| amusement_002_counter_04 | amusement_002 | Counter |  | 6 | 12 | 4 | 1 |
+| amusement_002_counter_05 | amusement_002 | Counter |  | 7 | 12 | 5 | 1 |
+| amusement_002_worker_service | amusement_002 | WorkerService |  | 5 | 13 | 1 | 1 |
+| amusement_002_bead_stand | amusement_002 | ProductStand | bead_icecream | 3 | 15 | 1 | 1 |
+| amusement_002_bead_slot_01 | amusement_002 | ProductionSlot | bead_icecream | 4 | 15 | 1 | 1 |
+| amusement_002_chicken_stand | amusement_002 | ProductStand | chicken_skewer | 6 | 15 | 1 | 1 |
+| amusement_002_chicken_slot_01 | amusement_002 | ProductionSlot | chicken_skewer | 7 | 15 | 1 | 1 |
+| amusement_002_chicken_slot_02 | amusement_002 | ProductionSlot | chicken_skewer | 7 | 16 | 2 | 1 |
+| amusement_002_main_start | amusement_002 | MainCharacterStart |  | 5 | 13 | 1 | 1 |
+| amusement_002_staff_wait_01 | amusement_002 | StaffWaiting |  | 4 | 13 | 1 | 1 |
+| amusement_002_staff_wait_02 | amusement_002 | StaffWaiting |  | 6 | 13 | 2 | 1 |
+| amusement_002_decoration_base | amusement_002 | DecorationArea |  | 5 | 5 | 1 | 1 |
 | amusement_003_entrance | amusement_003 | Entrance |  | 5 | 0 | 1 | 1 |
 | amusement_003_exit | amusement_003 | Exit |  | 6 | 0 | 1 | 1 |
 | amusement_003_path_01 | amusement_003 | CustomerPath |  | 5 | 1 | 1 | 1 |
 | amusement_003_path_02 | amusement_003 | CustomerPath |  | 5 | 2 | 2 | 1 |
 | amusement_003_path_03 | amusement_003 | CustomerPath |  | 5 | 3 | 3 | 1 |
-| amusement_003_order_01 | amusement_003 | CustomerOrder |  | 5 | 4 | 1 | 1 |
-| amusement_003_order_02 | amusement_003 | CustomerOrder |  | 4 | 4 | 2 | 1 |
-| amusement_003_order_03 | amusement_003 | CustomerOrder |  | 6 | 4 | 3 | 1 |
-| amusement_003_order_04 | amusement_003 | CustomerOrder |  | 3 | 4 | 4 | 1 |
-| amusement_003_order_05 | amusement_003 | CustomerOrder |  | 7 | 4 | 5 | 1 |
-| amusement_003_order_06 | amusement_003 | CustomerOrder |  | 2 | 4 | 6 | 1 |
-| amusement_003_order_07 | amusement_003 | CustomerOrder |  | 8 | 4 | 7 | 1 |
-| amusement_003_order_back_01 | amusement_003 | CustomerOrderBack |  | 5 | 3 | 8 | 1 |
-| amusement_003_order_back_02 | amusement_003 | CustomerOrderBack |  | 4 | 3 | 9 | 1 |
-| amusement_003_order_back_03 | amusement_003 | CustomerOrderBack |  | 6 | 3 | 10 | 1 |
-| amusement_003_order_back_04 | amusement_003 | CustomerOrderBack |  | 3 | 3 | 11 | 1 |
-| amusement_003_order_back_05 | amusement_003 | CustomerOrderBack |  | 7 | 3 | 12 | 1 |
-| amusement_003_order_back_06 | amusement_003 | CustomerOrderBack |  | 2 | 3 | 13 | 1 |
-| amusement_003_order_back_07 | amusement_003 | CustomerOrderBack |  | 8 | 3 | 14 | 1 |
-| amusement_003_counter_01 | amusement_003 | Counter |  | 2 | 5 | 1 | 1 |
-| amusement_003_counter_02 | amusement_003 | Counter |  | 3 | 5 | 2 | 1 |
-| amusement_003_counter_03 | amusement_003 | Counter |  | 4 | 5 | 3 | 1 |
-| amusement_003_counter_04 | amusement_003 | Counter |  | 5 | 5 | 4 | 1 |
-| amusement_003_counter_05 | amusement_003 | Counter |  | 6 | 5 | 5 | 1 |
-| amusement_003_counter_06 | amusement_003 | Counter |  | 7 | 5 | 6 | 1 |
-| amusement_003_counter_07 | amusement_003 | Counter |  | 8 | 5 | 7 | 1 |
-| amusement_003_popcorn_stand | amusement_003 | ProductStand | popcorn | 2 | 6 | 1 | 1 |
-| amusement_003_popcorn_slot_01 | amusement_003 | ProductionSlot | popcorn | 3 | 6 | 1 | 1 |
-| amusement_003_hotdog_stand | amusement_003 | ProductStand | hotdog | 5 | 6 | 1 | 1 |
-| amusement_003_hotdog_slot_01 | amusement_003 | ProductionSlot | hotdog | 6 | 6 | 1 | 1 |
-| amusement_003_hotdog_slot_02 | amusement_003 | ProductionSlot | hotdog | 6 | 7 | 2 | 1 |
-| amusement_003_churros_stand | amusement_003 | ProductStand | churros | 8 | 6 | 1 | 1 |
-| amusement_003_churros_slot_01 | amusement_003 | ProductionSlot | churros | 9 | 6 | 1 | 1 |
-| amusement_003_churros_slot_02 | amusement_003 | ProductionSlot | churros | 9 | 7 | 2 | 1 |
-| amusement_003_main_start | amusement_003 | MainCharacterStart |  | 5 | 8 | 1 | 1 |
-| amusement_003_staff_wait_01 | amusement_003 | StaffWaiting |  | 4 | 8 | 1 | 1 |
-| amusement_003_staff_wait_02 | amusement_003 | StaffWaiting |  | 6 | 8 | 2 | 1 |
-| amusement_003_staff_wait_03 | amusement_003 | StaffWaiting |  | 5 | 9 | 3 | 1 |
-| amusement_003_decoration_base | amusement_003 | DecorationArea |  | 5 | 13 | 1 | 1 |
+| amusement_003_order_01 | amusement_003 | CustomerOrder |  | 5 | 11 | 1 | 1 |
+| amusement_003_order_02 | amusement_003 | CustomerOrder |  | 4 | 11 | 2 | 1 |
+| amusement_003_order_03 | amusement_003 | CustomerOrder |  | 6 | 11 | 3 | 1 |
+| amusement_003_order_04 | amusement_003 | CustomerOrder |  | 3 | 11 | 4 | 1 |
+| amusement_003_order_05 | amusement_003 | CustomerOrder |  | 7 | 11 | 5 | 1 |
+| amusement_003_order_06 | amusement_003 | CustomerOrder |  | 2 | 11 | 6 | 1 |
+| amusement_003_order_07 | amusement_003 | CustomerOrder |  | 8 | 11 | 7 | 1 |
+| amusement_003_order_back_01 | amusement_003 | CustomerOrderBack |  | 5 | 10 | 8 | 1 |
+| amusement_003_order_back_02 | amusement_003 | CustomerOrderBack |  | 4 | 10 | 9 | 1 |
+| amusement_003_order_back_03 | amusement_003 | CustomerOrderBack |  | 6 | 10 | 10 | 1 |
+| amusement_003_order_back_04 | amusement_003 | CustomerOrderBack |  | 3 | 10 | 11 | 1 |
+| amusement_003_order_back_05 | amusement_003 | CustomerOrderBack |  | 7 | 10 | 12 | 1 |
+| amusement_003_order_back_06 | amusement_003 | CustomerOrderBack |  | 2 | 10 | 13 | 1 |
+| amusement_003_order_back_07 | amusement_003 | CustomerOrderBack |  | 8 | 10 | 14 | 1 |
+| amusement_003_counter_01 | amusement_003 | Counter |  | 2 | 12 | 1 | 1 |
+| amusement_003_counter_02 | amusement_003 | Counter |  | 3 | 12 | 2 | 1 |
+| amusement_003_counter_03 | amusement_003 | Counter |  | 4 | 12 | 3 | 1 |
+| amusement_003_counter_04 | amusement_003 | Counter |  | 5 | 12 | 4 | 1 |
+| amusement_003_counter_05 | amusement_003 | Counter |  | 6 | 12 | 5 | 1 |
+| amusement_003_counter_06 | amusement_003 | Counter |  | 7 | 12 | 6 | 1 |
+| amusement_003_counter_07 | amusement_003 | Counter |  | 8 | 12 | 7 | 1 |
+| amusement_003_worker_service | amusement_003 | WorkerService |  | 5 | 13 | 1 | 1 |
+| amusement_003_popcorn_stand | amusement_003 | ProductStand | popcorn | 2 | 15 | 1 | 1 |
+| amusement_003_popcorn_slot_01 | amusement_003 | ProductionSlot | popcorn | 3 | 15 | 1 | 1 |
+| amusement_003_hotdog_stand | amusement_003 | ProductStand | hotdog | 5 | 15 | 1 | 1 |
+| amusement_003_hotdog_slot_01 | amusement_003 | ProductionSlot | hotdog | 6 | 15 | 1 | 1 |
+| amusement_003_hotdog_slot_02 | amusement_003 | ProductionSlot | hotdog | 6 | 16 | 2 | 1 |
+| amusement_003_churros_stand | amusement_003 | ProductStand | churros | 8 | 15 | 1 | 1 |
+| amusement_003_churros_slot_01 | amusement_003 | ProductionSlot | churros | 9 | 15 | 1 | 1 |
+| amusement_003_churros_slot_02 | amusement_003 | ProductionSlot | churros | 9 | 16 | 2 | 1 |
+| amusement_003_main_start | amusement_003 | MainCharacterStart |  | 5 | 13 | 1 | 1 |
+| amusement_003_staff_wait_01 | amusement_003 | StaffWaiting |  | 4 | 13 | 1 | 1 |
+| amusement_003_staff_wait_02 | amusement_003 | StaffWaiting |  | 6 | 13 | 2 | 1 |
+| amusement_003_staff_wait_03 | amusement_003 | StaffWaiting |  | 5 | 14 | 3 | 1 |
+| amusement_003_decoration_base | amusement_003 | DecorationArea |  | 5 | 5 | 1 | 1 |
 
 ### MainCharacterConfig
 
@@ -1212,14 +1239,14 @@ MVP에서 캐릭터 구매와 장비를 구현하지 않는 경우 기본 캐릭
 
 ### ProductTable
 
-| productId | displayName | themeId | stageId | standOrder | isStartingStand | unlockCost | basePrice | baseProductionAmount | baseProductionTimeSec | maxLevel | maxStarCount | baseProductionSlotCount | maxProductionSlotCount | upgradeBaseCost | levelCurveId | priceGrowth | costGrowth |
-|---|---|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|
-| cotton_candy | 솜사탕 | theme_amusement | amusement_001 | 1 | true | 5 | 2 | 1 | 5.0 | 25 | 2 | 1 | 1 | 3 | curve_mvp_starter_25 | 1.00 | 1.00 |
-| bead_icecream | 구슬아이스크림 | theme_amusement | amusement_002 | 1 | true | 5 | 2 | 1 | 5.0 | 75 | 4 | 1 | 1 | 3 | curve_mvp_starter_75 | 1.00 | 1.00 |
-| chicken_skewer | 닭꼬치 | theme_amusement | amusement_002 | 2 | false | 250 | 320 | 1 | 9.0 | 75 | 4 | 1 | 2 | 150 | curve_mvp_second_75 | 1.00 | 1.00 |
-| popcorn | 팝콘 | theme_amusement | amusement_003 | 1 | true | 5 | 2 | 1 | 5.0 | 75 | 4 | 1 | 1 | 3 | curve_mvp_starter_75 | 1.00 | 1.00 |
-| hotdog | 핫도그 | theme_amusement | amusement_003 | 2 | false | 250 | 320 | 1 | 9.0 | 75 | 4 | 1 | 2 | 150 | curve_mvp_second_75 | 1.00 | 1.00 |
-| churros | 츄러스 | theme_amusement | amusement_003 | 3 | false | 12500 | 24 | 1 | 13.0 | 75 | 4 | 1 | 2 | 36 | curve_mvp_third_75 | 1.00 | 1.00 |
+| productId | displayName | themeId | stageId | standOrder | isStartingStand | unlockGateRule | unlockCost | basePrice | baseProductionAmount | baseProductionTimeSec | maxLevel | maxStarCount | baseProductionSlotCount | maxProductionSlotCount | upgradeBaseCost | levelCurveId | priceGrowth | costGrowth |
+|---|---|---|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|
+| cotton_candy | 솜사탕 | theme_amusement | amusement_001 | 1 | true | FirstOrderReceived | 5 | 2 | 1 | 5.0 | 25 | 2 | 1 | 1 | 3 | curve_mvp_starter_25 | 1.00 | 1.00 |
+| bead_icecream | 구슬아이스크림 | theme_amusement | amusement_002 | 1 | true | FirstOrderReceived | 5 | 2 | 1 | 5.0 | 75 | 4 | 1 | 1 | 3 | curve_mvp_starter_75 | 1.00 | 1.00 |
+| chicken_skewer | 닭꼬치 | theme_amusement | amusement_002 | 2 | false | FirstStandUnlocked | 250 | 320 | 1 | 9.0 | 75 | 4 | 1 | 2 | 150 | curve_mvp_second_75 | 1.00 | 1.00 |
+| popcorn | 팝콘 | theme_amusement | amusement_003 | 1 | true | FirstOrderReceived | 5 | 2 | 1 | 5.0 | 75 | 4 | 1 | 1 | 3 | curve_mvp_starter_75 | 1.00 | 1.00 |
+| hotdog | 핫도그 | theme_amusement | amusement_003 | 2 | false | FirstStandUnlocked | 250 | 320 | 1 | 9.0 | 75 | 4 | 1 | 2 | 150 | curve_mvp_second_75 | 1.00 | 1.00 |
+| churros | 츄러스 | theme_amusement | amusement_003 | 3 | false | FirstStandUnlocked | 12500 | 24 | 1 | 13.0 | 75 | 4 | 1 | 2 | 36 | curve_mvp_third_75 | 1.00 | 1.00 |
 
 ### ProductLevelCurveTable
 
