@@ -26,3 +26,7 @@
 .DS_Store
 .idea/
 .vscode/
+
+# Blender generated working files
+/Tools/Blender/output/
+/Tools/Blender/scripts/__pycache__/

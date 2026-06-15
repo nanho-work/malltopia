@@ -10,6 +10,7 @@
 - [Data Table Specification](Docs/04_DataTableSpec.md)
 - [Unity Architecture Guide](Docs/05_UnityArchitectureGuide.md)
 - [Next Patch Plan](Docs/06_NextPatchPlan.md)
+- [Asset and Scene Separation](Docs/07_AssetAndSceneSeparation.md)
 
 ## Unity Prototype Controls
 

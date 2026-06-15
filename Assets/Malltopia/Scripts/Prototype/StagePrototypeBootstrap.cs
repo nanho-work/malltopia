@@ -21,6 +21,12 @@ namespace Malltopia
         public float moveSecondsPerTile = 1f;
         public bool autoStartCustomerLoop = true;
 
+        [Header("Prototype Assets")]
+        public GameObject customerPrefab;
+        public float customerPrefabScale = 0.42f;
+        public Vector3 customerPrefabLocalOffset = new Vector3(0f, -0.36f, -0.55f);
+        public Vector3 customerPrefabLocalEuler = Vector3.zero;
+
         [Header("Upgrade Hold")]
         public float holdStartDelaySec = 0.35f;
         public float initialRepeatIntervalSec = 0.12f;
@@ -47,6 +53,7 @@ namespace Malltopia
         private Sprite footerButtonBaseSprite;
         private Sprite footerButtonWideSprite;
         private Sprite footerCharacterSprite;
+        private GameObject cachedCustomerPrefab;
         private double gold;
         private int diamond;
         private int currentStageNumber;
@@ -70,6 +77,7 @@ namespace Malltopia
         private const string FooterButtonBaseSpritePath = "Assets/Malltopia/Art/UI/Icons/button_footer_base.png";
         private const string FooterButtonWideSpritePath = "Assets/Malltopia/Art/UI/Icons/button_footer_base_pressed.png";
         private const string FooterCharacterSpritePath = "Assets/Malltopia/Art/UI/Icons/footer_character.png";
+        private const string CustomerPrefabPath = "Assets/Malltopia/Art/Models/Customers/CustomerChibi.fbx";
 
         private void Start()
         {
@@ -1049,7 +1057,7 @@ namespace Malltopia
             runtime.Id = nextCustomerId++;
             runtime.OrderSlotIndex = orderSlotIndex;
             runtime.OrderCell = currentStage.customerOrderCells[orderSlotIndex];
-            runtime.Agent = CreateAgent("Customer " + runtime.Id, GridToWorld(currentStage.entranceCell), new Color(1f, 0.78f, 0.27f), "손");
+            runtime.Agent = CreateCustomerAgent("Customer " + runtime.Id, GridToWorld(currentStage.entranceCell));
             GameObject bubble = CreateBox("Order Bubble", runtime.Agent.transform.position + new Vector3(0.3f, 0.72f, -0.6f), new Vector3(1.35f, 0.55f, 0.05f), Color.white, dynamicRoot);
             bubble.transform.SetParent(runtime.Agent.transform, true);
             runtime.BubbleText = CreateText("Order Bubble Text", string.Empty, bubble.transform.position + new Vector3(0f, 0f, -0.7f), 0.045f, Color.black, dynamicRoot);
@@ -1064,6 +1072,48 @@ namespace Malltopia
             runtime.GridPosition = startCell;
             runtime.Agent = CreateAgent(name, GridToWorld(startCell), color, label);
             return runtime;
+        }
+
+        private GameObject CreateCustomerAgent(string name, Vector3 position)
+        {
+            GameObject prefab = GetCustomerPrefab();
+            if (prefab == null)
+            {
+                return CreateAgent(name, position, new Color(1f, 0.78f, 0.27f), "손");
+            }
+
+            GameObject agent = new GameObject(name);
+            agent.transform.SetParent(dynamicRoot, false);
+            agent.transform.position = position + new Vector3(0f, 0f, -0.35f);
+
+            GameObject visual = Instantiate(prefab, agent.transform);
+            visual.name = "CustomerChibi Visual";
+            visual.transform.localPosition = customerPrefabLocalOffset;
+            visual.transform.localRotation = Quaternion.Euler(customerPrefabLocalEuler);
+            visual.transform.localScale = Vector3.one * Mathf.Max(0.01f, customerPrefabScale);
+
+            PrototypeFaceCamera faceCamera = visual.AddComponent<PrototypeFaceCamera>();
+            faceCamera.eulerOffset = customerPrefabLocalEuler;
+            return agent;
+        }
+
+        private GameObject GetCustomerPrefab()
+        {
+            if (customerPrefab != null)
+            {
+                return customerPrefab;
+            }
+
+#if UNITY_EDITOR
+            if (cachedCustomerPrefab == null)
+            {
+                cachedCustomerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(CustomerPrefabPath);
+            }
+
+            return cachedCustomerPrefab;
+#else
+            return null;
+#endif
         }
 
         private GameObject CreateAgent(string name, Vector3 position, Color color, string label)
