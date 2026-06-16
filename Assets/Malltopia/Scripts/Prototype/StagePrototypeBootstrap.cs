@@ -18,12 +18,24 @@ namespace Malltopia
         public int gridWidth = 11;
         public int gridHeight = 20;
         public float cellSize = 1f;
-        public float moveSecondsPerTile = 1f;
+        public float moveSecondsPerTile = 1.2f;
         public bool autoStartCustomerLoop = true;
+
+        [Header("Prototype Camera")]
+        [Tooltip("How many grid rows fit vertically in the Game view. Smaller values zoom in.")]
+        [Min(4f)]
+        public float cameraVisibleRows = 16f;
+        [Tooltip("Positive values move the camera view toward the entrance/customer area.")]
+        public float cameraVerticalOffsetCells = 1.5f;
 
         [Header("Prototype Assets")]
         public GameObject customerPrefab;
-        public float customerPrefabScale = 0.42f;
+        [Tooltip("Customer visual target height in grid cells. 2 means about two cells tall.")]
+        [Min(0.1f)]
+        public float customerVisualHeightCells = 2f;
+        [Tooltip("Extra multiplier after fitting customerVisualHeightCells. Usually keep this at 1.")]
+        [Min(0.1f)]
+        public float customerPrefabScale = 1f;
         public Vector3 customerPrefabLocalOffset = new Vector3(0f, -0.36f, -0.55f);
         public Vector3 customerPrefabLocalEuler = Vector3.zero;
 
@@ -78,6 +90,19 @@ namespace Malltopia
         private const string FooterButtonWideSpritePath = "Assets/Malltopia/Art/UI/Icons/button_footer_base_pressed.png";
         private const string FooterCharacterSpritePath = "Assets/Malltopia/Art/UI/Icons/footer_character.png";
         private const string CustomerPrefabPath = "Assets/Malltopia/Art/Models/Customers/CustomerChibi.fbx";
+
+        private void OnValidate()
+        {
+            cellSize = Mathf.Max(0.01f, cellSize);
+            customerVisualHeightCells = Mathf.Max(0.1f, customerVisualHeightCells);
+            customerPrefabScale = Mathf.Max(0.1f, customerPrefabScale);
+
+            if (Application.isPlaying)
+            {
+                RefreshCustomerVisuals();
+                ApplyPrototypeCamera(Camera.main);
+            }
+        }
 
         private void Start()
         {
@@ -1090,11 +1115,62 @@ namespace Malltopia
             visual.name = "CustomerChibi Visual";
             visual.transform.localPosition = customerPrefabLocalOffset;
             visual.transform.localRotation = Quaternion.Euler(customerPrefabLocalEuler);
-            visual.transform.localScale = Vector3.one * Mathf.Max(0.01f, customerPrefabScale);
+            FitCustomerVisualToCellHeight(visual);
 
             PrototypeFaceCamera faceCamera = visual.AddComponent<PrototypeFaceCamera>();
             faceCamera.eulerOffset = customerPrefabLocalEuler;
             return agent;
+        }
+
+        private void RefreshCustomerVisuals()
+        {
+            for (int i = 0; i < activeCustomers.Count; i++)
+            {
+                GameObject agent = activeCustomers[i].Agent;
+                if (agent == null)
+                {
+                    continue;
+                }
+
+                PrototypeFaceCamera faceCamera = agent.GetComponentInChildren<PrototypeFaceCamera>();
+                if (faceCamera == null)
+                {
+                    continue;
+                }
+
+                Transform visual = faceCamera.transform;
+                visual.localPosition = customerPrefabLocalOffset;
+                visual.localRotation = Quaternion.Euler(customerPrefabLocalEuler);
+                faceCamera.eulerOffset = customerPrefabLocalEuler;
+                FitCustomerVisualToCellHeight(visual.gameObject);
+            }
+        }
+
+        private void FitCustomerVisualToCellHeight(GameObject visual)
+        {
+            if (visual == null)
+            {
+                return;
+            }
+
+            visual.transform.localScale = Vector3.one;
+            Renderer[] renderers = visual.GetComponentsInChildren<Renderer>();
+            if (renderers.Length == 0)
+            {
+                visual.transform.localScale = Vector3.one * Mathf.Max(0.01f, customerPrefabScale);
+                return;
+            }
+
+            Bounds bounds = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++)
+            {
+                bounds.Encapsulate(renderers[i].bounds);
+            }
+
+            float currentHeight = Mathf.Max(0.01f, bounds.size.y);
+            float targetHeight = Mathf.Max(0.1f, customerVisualHeightCells) * cellSize;
+            float scale = targetHeight / currentHeight * Mathf.Max(0.01f, customerPrefabScale);
+            visual.transform.localScale = Vector3.one * scale;
         }
 
         private GameObject GetCustomerPrefab()
@@ -1988,9 +2064,24 @@ namespace Malltopia
             existingCamera.transform.position = new Vector3(0f, -0.25f, -15f);
             existingCamera.transform.rotation = Quaternion.identity;
             existingCamera.orthographic = true;
-            existingCamera.orthographicSize = gridHeight * 0.5f + 1.8f;
             existingCamera.backgroundColor = new Color(0.12f, 0.13f, 0.15f);
             existingCamera.clearFlags = CameraClearFlags.SolidColor;
+            ApplyPrototypeCamera(existingCamera);
+        }
+
+        private void ApplyPrototypeCamera(Camera targetCamera)
+        {
+            if (targetCamera == null)
+            {
+                return;
+            }
+
+            float visibleRows = Mathf.Clamp(cameraVisibleRows, 4f, Mathf.Max(4f, gridHeight + 4f));
+            float offsetY = cameraVerticalOffsetCells * cellSize;
+            targetCamera.transform.position = new Vector3(0f, offsetY, -15f);
+            targetCamera.transform.rotation = Quaternion.identity;
+            targetCamera.orthographic = true;
+            targetCamera.orthographicSize = visibleRows * cellSize * 0.5f;
         }
 
         private Transform CreateRoot(string name)

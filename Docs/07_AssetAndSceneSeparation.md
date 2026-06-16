@@ -41,6 +41,26 @@ Assets/Malltopia/Art/Models/
 
 Unity에서는 FBX와 `.meta`를 함께 관리한다. 파일을 옮길 때는 `.meta`도 같이 옮긴다.
 
+## Customer Size
+
+프로토타입 손님 크기는 FBX 원본 scale이 아니라 `StagePrototypeBootstrap`의 칸 기준 값으로 맞춘다.
+
+- `customerVisualHeightCells`: 손님이 화면에서 몇 칸 높이로 보일지
+- `customerPrefabScale`: 위 값을 기준으로 한 추가 배율
+
+예시:
+
+```text
+customerVisualHeightCells = 2.0   # 기본 손님 키가 2칸
+customerVisualHeightCells = 2.3   # 더 크게 보임
+```
+
+`0.80`은 80배가 아니라 80% 배율이다.
+
+크기를 바꿨는데 기존 손님이 바로 안 바뀌면, 생성된 손님에 이전 값이 남아 있는 상황일 수 있다. 현재는 Play 중 Inspector 값을 바꾸면 생성된 손님도 다시 맞추도록 처리한다.
+
+손님을 아무리 키워도 화면에서 작게 느껴질 수 있는 주된 이유는 카메라가 너무 많은 행을 한 화면에 넣기 때문이다. `cameraVisibleRows`는 Game view에 세로로 몇 칸을 보여줄지 정한다. 값이 작을수록 줌인되어 손님과 매대가 크게 보인다.
+
 ## Current Prototype Scene
 
 현재 `StagePrototypeBootstrap`은 빠른 기능 검증용 2D 프로토타입이다.
